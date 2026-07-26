@@ -5,6 +5,7 @@
   "main": "ARQUIVOS DO BOT/index.js",
   "scripts": {
     "start": "node \"ARQUIVOS DO BOT/index.js\"",
+    "build": "npm install",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
