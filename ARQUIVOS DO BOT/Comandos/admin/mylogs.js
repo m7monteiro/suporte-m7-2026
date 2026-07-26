@@ -1,67 +1,115 @@
-const Discord = require("discord.js")
+const Discord = require("discord.js");
+const fs = require('fs');
+const path = require('path');
 
 module.exports = {
   name: "mylogs",
-  description: "Veja suas logs", 
+  description: "Veja seus logs de tickets assumidos",
   type: Discord.ApplicationCommandType.ChatInput,
 
-
   run: async (client, interaction) => {
-    const logs = require("../../json/logs.json")
-    const userId = interaction.user.id;
-    const userLogs = logs[userId];
+    // CORREÇÃO TIMEOUT: Responder imediatamente
+    await interaction.deferReply({ ephemeral: true });
+
+    const logsFilePath = path.join(__dirname, "..", "..", "json", "logs.json");
+    let logs;
+    try {
+        const rawData = fs.readFileSync(logsFilePath, 'utf-8');
+        logs = JSON.parse(rawData);
+    } catch (e) {
+        return interaction.editReply({ content: "❌ Erro ao ler arquivo de logs ou arquivo vazio." });
+    }
+
+    const idDoUsuario = interaction.user.id;
+    const userLogs = logs[idDoUsuario];
 
     if (!userLogs || userLogs.length === 0) {
-      interaction.reply({ content: `Você não possui registros de tickets.`, ephemeral: true });
-      return;
+      return interaction.editReply({ content: "Você não possui nenhum log de ticket." });
     }
 
     let currentPage = 0;
-
     const maxPage = userLogs.length - 1;
 
-    const embed = new Discord.EmbedBuilder()
-      .setTitle("Registros de Tickets")
-      .setDescription("Aqui estão seus registros de tickets:")
-      .addFields({name:"Dono do Ticket", value: `${interaction.guild.members.cache.get(userLogs[currentPage].dono_ticket)}`, inline:true})
-      .addFields({name:"Fechou o Ticket",value:  `${interaction.guild.members.cache.get(userLogs[currentPage].fechou_ticket)}`, inline:true})
-      .addFields({name:"Assumido", value: `${interaction.guild.members.cache.get(userLogs[currentPage].assumido)?? `Ninguem Assumiu`}`, inline:true})
-      .addFields({name:"Motivo", value: `\`${userLogs[currentPage].motivo}\``, inline:true})
-      .addFields({name:"Código", value: `\`${userLogs[currentPage].codigo}\``, inline:true})
-      .setFooter({text:`Página ${currentPage + 1} de ${userLogs.length}`});
+    const generateEmbed = (page) => {
+      const log = userLogs[page];
+      const embed = new Discord.EmbedBuilder()
+        .setTitle(`Logs de Tickets - Página ${page + 1}/${userLogs.length}`)
+        .setColor("Blue")
+        .addFields(
+          { name: "Dono do Ticket", value: `<@${log.dono_ticket}>`, inline: true },
+          { name: "Fechou o Ticket", value: `<@${log.fechou_ticket}>`, inline: true },
+          { name: "Assumido por", value: log.assumido === "Ninguem assumiu" ? "`Ninguém Assumiu`" : `<@${log.assumido}>`, inline: true },
+          { name: "Motivo", value: `\`${log.motivo}\``, inline: false },
+          { name: "Código", value: `\`${log.codigo}\``, inline: true }
+        );
+      return embed;
+    };
 
     const row = new Discord.ActionRowBuilder().addComponents(
       new Discord.ButtonBuilder()
         .setCustomId("previousPage")
-        .setLabel("Página Anterior")
-        .setStyle(1),
+        .setLabel("Anterior")
+        .setStyle(Discord.ButtonStyle.Primary)
+        .setDisabled(true),
       new Discord.ButtonBuilder()
         .setCustomId("nextPage")
-        .setLabel("Próxima Página")
-        .setStyle(1)
+        .setLabel("Próxima")
+        .setStyle(Discord.ButtonStyle.Primary)
+        .setDisabled(userLogs.length <= 1)
     );
 
-    interaction.reply({ embeds: [embed], components: [row], ephemeral:true });
+    const message = await interaction.editReply({
+      embeds: [generateEmbed(currentPage)],
+      components: [row],
+    });
 
-    const filter = (i) => i.customId === "previousPage" || i.customId === "nextPage";
-    const collector = interaction.channel.createMessageComponentCollector({ filter});
+    const filter = (i) => i.user.id === interaction.user.id; 
+    const collector = message.createMessageComponentCollector({
+      filter,
+      time: 120000, 
+    });
 
-    collector.on("collect", (i) => {
+    collector.on("collect", async (i) => {
       if (i.customId === "previousPage" && currentPage > 0) {
         currentPage--;
       } else if (i.customId === "nextPage" && currentPage < maxPage) {
         currentPage++;
       }
 
-      embed.fields = [];
-      embed
-      .setFields({name:"Dono do Ticket", value: `${interaction.guild.members.cache.get(userLogs[currentPage].dono_ticket)}`, inline:true} ,{name:"Fechou o Ticket",value:  `${interaction.guild.members.cache.get(userLogs[currentPage].fechou_ticket)}`, inline:true}, {name:"Assumido", value: `${interaction.guild.members.cache.get(userLogs[currentPage].assumido)?? `Ninguem Assumiu`}`, inline:true}, {name:"Motivo", value: `\`${userLogs[currentPage].motivo}\``, inline:true}, {name:"Código", value: `\`${userLogs[currentPage].codigo}\``, inline:true})
-        .setFooter({text:`Página ${currentPage + 1} de ${userLogs.length}`});
+      const updatedRow = new Discord.ActionRowBuilder().addComponents(
+        new Discord.ButtonBuilder()
+          .setCustomId("previousPage")
+          .setLabel("Anterior")
+          .setStyle(Discord.ButtonStyle.Primary)
+          .setDisabled(currentPage === 0),
+        new Discord.ButtonBuilder()
+          .setCustomId("nextPage")
+          .setLabel("Próxima")
+          .setStyle(Discord.ButtonStyle.Primary)
+          .setDisabled(currentPage === maxPage)
+      );
 
-      i.update({ embeds: [embed] });
+      // CORREÇÃO TIMEOUT: update() imediato
+      await i.update({
+        embeds: [generateEmbed(currentPage)],
+        components: [updatedRow],
+      }).catch(() => {});
     });
 
-    
-
-  }
-}
+    collector.on("end", () => {
+      const disabledRow = new Discord.ActionRowBuilder().addComponents(
+        new Discord.ButtonBuilder()
+          .setCustomId("previousPage")
+          .setLabel("Anterior")
+          .setStyle(Discord.ButtonStyle.Primary)
+          .setDisabled(true),
+        new Discord.ButtonBuilder()
+          .setCustomId("nextPage")
+          .setLabel("Próxima")
+          .setStyle(Discord.ButtonStyle.Primary)
+          .setDisabled(true)
+      );
+      interaction.editReply({ components: [disabledRow] }).catch(() => {});
+    });
+  },
+};

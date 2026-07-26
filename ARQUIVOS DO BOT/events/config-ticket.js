@@ -4,88 +4,88 @@ const embed = new Discord.EmbedBuilder()
 .setColor("Default")
 .setDescription("Ticket")
 
-
-
 module.exports = {
     name: 'config-ticket',
     async execute(interaction, message, client) {
 
-
         if(interaction.customId === "add-titule"){
+            // CORREÇÃO TIMEOUT: deferUpdate() é imediato
+            await interaction.deferUpdate();
 
-            interaction.deferUpdate();
-
-            interaction.channel.send({
+            await interaction.channel.send({
                 content:"Qual sera o novo titulo?",
             }).then((msg1) => {
               const filter = (m) => m.author.id === interaction.user.id;
               const collector = msg1.channel.createMessageCollector({
                 filter,
                 max: 1,
+                time: 60000
               });
 
               collector.on("collect", (message) => {
-                message.delete();
+                message.delete().catch(() => {});
                 embed.setTitle(message.content)
                 msg1.edit("⏰ | Alterado!");
                 setTimeout(() => {
-                    msg1.delete();
+                    msg1.delete().catch(() => {});
                 }, 1000);
               });
             });
         }
         
         if(interaction.customId === "add-footer"){
+            await interaction.deferUpdate();
 
-            interaction.deferUpdate();
-
-            interaction.channel.send({
+            await interaction.channel.send({
                 content:"Qual sera o novo rodapé?",
             }).then((msg1) => {
               const filter = (m) => m.author.id === interaction.user.id;
               const collector = msg1.channel.createMessageCollector({
                 filter,
                 max: 1,
+                time: 60000
               });
 
               collector.on("collect", (message) => {
-                message.delete();
+                message.delete().catch(() => {});
                 embed.setFooter({ text:`${message.content}`, iconURL:interaction.guild.iconURL() })
                 
                 msg1.edit("⏰ | Alterado!");
                 setTimeout(() => {
-                    msg1.delete();
+                    msg1.delete().catch(() => {});
                 }, 1000);
               });
             });
         }
         if(interaction.customId === "add-image"){
+            await interaction.deferUpdate();
 
-            interaction.deferUpdate();
-
-            interaction.channel.send({
+            await interaction.channel.send({
                 content:"Qual sera a nova imagem?",
             }).then((msg1) => {
               const filter = (m) => m.author.id === interaction.user.id;
               const collector = msg1.channel.createMessageCollector({
                 filter,
                 max: 1,
+                time: 60000
               });
 
               collector.on("collect", (message) => {
-                message.delete();
+                message.delete().catch(() => {});
                 embed.setImage(message.content)
 
                 msg1.edit("⏰ | Alterado!");
                 setTimeout(() => {
-                    msg1.delete();
+                    msg1.delete().catch(() => {});
                 }, 1000);
               });
             });
         }
         if(interaction.customId === "enviar_ticket"){
+            // CORREÇÃO TIMEOUT: deferReply() imediato
+            await interaction.deferReply({ ephemeral: true });
 
-            interaction.channel.send({
+            await interaction.channel.send({
                 embeds:[embed],
                 components:[
                     new Discord.ActionRowBuilder()
@@ -97,39 +97,43 @@ module.exports = {
                     )
                 ]
             }).then(() => {
-                interaction.reply({
-                    content:"enviado com sucesso",
-                    ephemeral:true
+                interaction.editReply({
+                    content:"enviado com sucesso"
                 })
-            })
+            }).catch(() => {
+                interaction.editReply({
+                    content:"Erro ao enviar o ticket."
+                })
+            });
         }
         if(interaction.customId === "alterar-desc"){
+            await interaction.deferUpdate();
 
-            interaction.deferUpdate();
-
-            interaction.channel.send({
+            await interaction.channel.send({
                 content:"Qual sera a nova descrição?",
             }).then((msg1) => {
               const filter = (m) => m.author.id === interaction.user.id;
               const collector = msg1.channel.createMessageCollector({
                 filter,
                 max: 1,
+                time: 60000
               });
 
               collector.on("collect", (message) => {
-                message.delete();
+                message.delete().catch(() => {});
                 embed.setDescription(message.content)
 
                 msg1.edit("⏰ | Alterado!");
                 setTimeout(() => {
-                    msg1.delete();
+                    msg1.delete().catch(() => {});
                 }, 1000);
               });
             });
         }
 
         if(interaction.customId === "reiniciar-ticket") {
-            interaction.update({
+            // CORREÇÃO TIMEOUT: update() imediato
+            await interaction.update({
                 embeds:[
                     new Discord.EmbedBuilder()
                 .setDescription("Configure o ticket antes de envia-lo"),

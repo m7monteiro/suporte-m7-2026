@@ -7,9 +7,6 @@ const randomString = require("randomized-string");
 const fs = require('fs');
 const path = require('path');
 
-// BUG 1 CORRIGIDO: Caminhos absolutos para os arquivos JSON
-// Antes usava caminhos relativos como 'json/logs.json' que quebravam
-// dependendo do diretório de onde o processo era iniciado.
 const assumedFilePath = path.join(__dirname, "..", "json", "assumidos.json");
 const logsFilePath = path.join(__dirname, "..", "json", "logs.json");
 const configTicketPath = path.join(__dirname, "..", "json", "config.ticket.json");
@@ -84,6 +81,12 @@ module.exports = {
         }
 
         if(interaction.isModalSubmit() && interaction.customId === "modal_ticket"){
+            // CORREÇÃO TIMEOUT: Responder imediatamente antes de criar o canal
+            await interaction.reply({
+                content:`Seu Ticket está sendo aberto, aguarde...`,
+                ephemeral:true
+            });
+
             const motivo = interaction.fields.getTextInputValue("motivo");
             const permissionOverwrites = [
                 {
@@ -100,13 +103,6 @@ module.exports = {
                 },
               ];
 
-
-              await interaction.reply({
-                content:`Seu Ticket está sendo aberto, aguarde...`,
-                ephemeral:true
-              })
-
-
               await db.add(`quantiaticket_${interaction.user.id}`, 1)
               
               const abc = await db.get(`quantiaticket_${interaction.user.id}`)
@@ -117,9 +113,7 @@ module.exports = {
               const aaaaa = randomToken
               
               const cargo_staff = interaction.guild.roles.cache.get(ticket.config_principais.cargo_staff)
-              // BUG 2 CORRIGIDO: Removido o .then() encadeado no channels.create
-              // O código misturava async/await com .then(), causando comportamento
-              // imprevisível e erros de "interaction already replied".
+              
               const channels = await interaction.guild.channels.create({
                 name: `🎫-${interaction.user.username}`,
                 type: 0,
@@ -246,7 +240,9 @@ module.exports = {
             await interaction.reply({ content: 'Você não tem permissão para usar este botão.', ephemeral: true });
             return;
           }
-            interaction.reply({
+            // CORREÇÃO TIMEOUT: ephemeral reply é rápido o suficiente, mas deferReply seria mais seguro
+            // Aqui mantemos reply pois é uma resposta direta com conteúdo fixo.
+            await interaction.reply({
                 content:`${interaction.user}`,
                 embeds:[
                     new Discord.EmbedBuilder()
@@ -283,16 +279,16 @@ module.exports = {
 
         if(interaction.isStringSelectMenu() && interaction.customId === "painelstaff"){
             const options = interaction.values[0]
-            const tickets = await db.get(`ticket_${interaction.channel.id}`) 
-            const usuario = tickets.usuario
-            const user = interaction.guild.members.cache.get(usuario)
-            const motivo = tickets.motivo
-            const codigo = tickets.codigo
-            const staff = interaction.guild.members.cache.get(tickets.staff)
-
+            
+            // CORREÇÃO TIMEOUT: Se for add_user ou remove_user, eles já usam update() que é imediato.
+            // Se for Cham_User, ele faz operações async, então precisamos de deferReply.
             if(options === "Cham_User"){
-                // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM
-                // O bot crashava se o usuário tivesse DMs desativadas.
+                await interaction.deferReply({ ephemeral: true });
+                
+                const tickets = await db.get(`ticket_${interaction.channel.id}`) 
+                const usuario = tickets.usuario
+                const user = interaction.guild.members.cache.get(usuario)
+                
                 try {
                     await user.send({
                         content:`O Staff ${interaction.user}, está lhe chamando, veja o motivo no ticket: ${interaction.channel.url}`,
@@ -310,34 +306,34 @@ module.exports = {
                     console.warn(`⚠ Não foi possível enviar DM para ${user.user.tag}: DMs desativadas.`);
                 }
 
-                interaction.reply({
-                    content:`Usuario está notificado`,
-                    ephemeral:true
+                await interaction.editReply({
+                    content:`Usuario está notificado`
                 })
             }
 
 
 
             if(options === "add_user"){
-
-                interaction.update({
+                // CORREÇÃO TIMEOUT: interaction.update() é imediato e seguro contra timeout.
+                await interaction.update({
                     embeds: [
                       new Discord.EmbedBuilder().setDescription(
-                        `👤 | Marce ou envie o ID do usuário que você deseja adicionar!`
+                        `👤 | Marque ou envie o ID do usuário que você deseja adicionar!`
                       ),
                     ],
                     components: [],
-                    ephemeral: true,
                   });
           
                   const filter = (i) => i.member.id === interaction.user.id;
                   const collector = interaction.channel.createMessageCollector({
                     filter,
+                    time: 60000, // Adicionado timeout ao collector por segurança
+                    max: 1
                   });
           
                   collector.on("collect", async (collect) => {
                     const user_content = collect.content;
-                    collect.delete();
+                    collect.delete().catch(() => {});
           
                     const user_collected =
                       interaction.guild.members.cache.get(user_content);
@@ -350,9 +346,12 @@ module.exports = {
                           ),
                         ],
                         components: [],
-                        ephemeral: true,
                       });
           
+                    const tickets = await db.get(`ticket_${interaction.channel.id}`) 
+                    const usuario = tickets.usuario
+                    const user = interaction.guild.members.cache.get(usuario)
+
                     if (
                       interaction.channel
                         .permissionsFor(user_collected.id)
@@ -365,7 +364,6 @@ module.exports = {
                           ),
                         ],
                         components: [],
-                        ephemeral: true,
                       });
           
                     const permissionOverwrites = [
@@ -408,14 +406,13 @@ module.exports = {
                       permissionOverwrites: permissionOverwrites,
                     });
           
-                    interaction.editReply({
+                    await interaction.editReply({
                       embeds: [
                         new Discord.EmbedBuilder().setDescription(
                           `O usuário ${user_collected}(\`${user_collected.id}\`) foi adicionado com sucesso!`
                         ),
                       ],
                       components: [],
-                      ephemeral: true,
                     });
           
                     collector.stop();
@@ -425,25 +422,25 @@ module.exports = {
 
 
             if(options === "remove_user"){
-
-                interaction.update({
+                await interaction.update({
                     embeds: [
                       new Discord.EmbedBuilder().setDescription(
-                        `👤 | Marce ou envie o ID do usuário que você deseja remover!`
+                        `👤 | Marque ou envie o ID do usuário que você deseja remover!`
                       ),
                     ],
                     components: [],
-                    ephemeral: true,
                   });
           
                   const filter = (i) => i.member.id === interaction.user.id;
                   const collector = interaction.channel.createMessageCollector({
                     filter,
+                    time: 60000,
+                    max: 1
                   });
           
                   collector.on("collect", async (collect) => {
                     const user_content = collect.content;
-                    collect.delete();
+                    collect.delete().catch(() => {});
           
                     const user_collected =
                       interaction.guild.members.cache.get(user_content);
@@ -456,9 +453,12 @@ module.exports = {
                           ),
                         ],
                         components: [],
-                        ephemeral: true,
                       });
-          
+
+                    const tickets = await db.get(`ticket_${interaction.channel.id}`) 
+                    const usuario = tickets.usuario
+                    const user = interaction.guild.members.cache.get(usuario)
+
                     if (
                       !interaction.channel
                         .permissionsFor(user_collected.id)
@@ -471,13 +471,9 @@ module.exports = {
                           ),
                         ],
                         components: [],
-                        ephemeral: true,
                       });
 
                       const cargoIDs = ticket.config_principais.cargo_staff;
-                      // BUG 4 CORRIGIDO: Typo "denny" trocado por "deny"
-                      // A permissão de remoção nunca funcionava pois "denny" não é
-                      // uma permissão válida do Discord.js.
                       const permissionOverwrites = [
                         {
                           id: interaction.guild.id,
@@ -513,14 +509,13 @@ module.exports = {
                       permissionOverwrites: permissionOverwrites,
                     });
           
-                    interaction.editReply({
+                    await interaction.editReply({
                       embeds: [
                         new Discord.EmbedBuilder().setDescription(
                           `O usuário ${user_collected}(\`${user_collected.id}\`) foi removido com sucesso!`
                         ),
                       ],
                       components: [],
-                      ephemeral: true,
                     });
           
                     collector.stop();
@@ -530,6 +525,20 @@ module.exports = {
 
 
         if(interaction.customId === "finalization_ticket"){
+            const user1 = interaction.guild.members.cache.get(interaction.user.id);
+            const roleIdToCheck = ticket.config_principais.cargo_staff;
+            const hasRequiredRole = user1.roles.cache.has(roleIdToCheck);
+          
+            if (!hasRequiredRole) {
+              await interaction.reply({ content: 'Você não tem permissão para usar este botão.', ephemeral: true });
+              return;
+            }
+
+            // CORREÇÃO TIMEOUT: Responder imediatamente
+            await interaction.reply({
+                content:`Este Ticket será finalizado em alguns segundos...`
+            });
+
             const tickets = await db.get(`ticket_${interaction.channel.id}`)
             const usuario = tickets.usuario
             const user = interaction.guild.members.cache.get(usuario)
@@ -538,19 +547,6 @@ module.exports = {
             const logs = interaction.guild.channels.cache.get(ticket.config_principais.channel_logs)
             const assumiu = interaction.guild.members.cache.get(tickets.staff)
             const assumiu1 = tickets.staff
-
-            const user1 = interaction.guild.members.cache.get(interaction.user.id);
-            const roleIdToCheck = ticket.config_principais.cargo_staff;
-          
-            const hasRequiredRole = user1.roles.cache.has(roleIdToCheck);
-          
-            if (!hasRequiredRole) {
-              await interaction.reply({ content: 'Você não tem permissão para usar este botão.', ephemeral: true });
-              return;
-            }
-            await interaction.reply({
-                content:`Este Ticket será finalizado em alguns segundos...`
-            });
 
             if(logs) {
                 await logs.send({
@@ -585,14 +581,10 @@ module.exports = {
                             }
                         )
                     ]
-                });
-            } else {
-                console.log("⚠ Canal Logs não configurado");
+                }).catch(() => {});
             }
 
-            // BUG 1 CORRIGIDO (continuação): Usando caminho absoluto para logs.json
             const lags = JSON.parse(fs.readFileSync(logsFilePath, 'utf-8'));
-
             const idDoUsuario = user.id;
             const newUserLog = {
               dono_ticket: idDoUsuario,
@@ -608,10 +600,8 @@ module.exports = {
                 lags[idDoUsuario].push(newUserLog);
             }
             
-            // BUG 1 CORRIGIDO: Usando caminho absoluto
             fs.writeFileSync(logsFilePath, JSON.stringify(lags, null, 2), 'utf-8');
 
-            // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM de finalização
             try {
                 await user.send({
                     content:"Ticket Finalizado",
@@ -656,9 +646,7 @@ module.exports = {
                         )
                     ]
                 });
-            } catch (e) {
-                console.warn(`⚠ Não foi possível enviar DM de finalização para ${user.user.tag}: DMs desativadas.`);
-            }
+            } catch (e) {}
 
             await db.set(`final_ticket_${user.id}`,{
                 dono_ticket: idDoUsuario,
@@ -668,15 +656,14 @@ module.exports = {
                 codigo: codigo,
             });
 
-            // BUG 5 CORRIGIDO: setTimeout movido para o final, após todas as operações async
-            // Antes o canal era deletado antes das operações de log/DM terminarem.
             setTimeout(() => {
-                interaction.channel.delete();
+                interaction.channel.delete().catch(() => {});
             }, 5000);
         }
 
 
         if (interaction.customId === "avaliar_servidor") {
+            // CORREÇÃO TIMEOUT: showModal() é instantâneo e não precisa de defer
             const modal = new Discord.ModalBuilder().setCustomId("modal_avalia").setTitle("Avalie nosso atendimento")
 
             const text = new Discord.TextInputBuilder()
@@ -705,19 +692,18 @@ module.exports = {
             const channel_avalia = interaction.client.channels.cache.get(ticket.config_principais.channel_avaliation);
             const tickets = await db.get(`final_ticket_${interaction.user.id}`)
 
-            // BUG 6 CORRIGIDO: Verificação se o canal de avaliação existe antes de usar
             if (!channel_avalia) {
-                return interaction.update({ content: "❌ Canal de avaliação não configurado.", components: [], embeds: [] });
+                return interaction.reply({ content: "❌ Canal de avaliação não configurado.", ephemeral: true });
             }
 
-            // BUG 6 CORRIGIDO: Switch simplificado — os 5 cases repetiam o mesmo código
-            // com apenas o texto da nota diferente. Unificado em lógica única.
             const notasValidas = ["1", "2", "3", "4", "5"];
             if (!notasValidas.includes(num)) {
                 return interaction.reply({ content: `Escolha um número de 1 a 5`, ephemeral: true });
             }
 
+            // CORREÇÃO TIMEOUT: update() é imediato
             await interaction.update({ content: "Enviado com sucesso!", components: [], embeds: [] });
+            
             await channel_avalia.send({
                 content: "Nova avaliação",
                 embeds: [
@@ -729,27 +715,30 @@ module.exports = {
                     .addFields({ name: `Codigo do ticket:`, value: `\`${tickets.codigo}\``, inline: true })
                     .addFields({ name: `Motivo:`, value: `\`${tickets.motivo}\``, inline: true })
                 ]
-            });
+            }).catch(() => {});
             await db.delete(`final_ticket_${interaction.user.id}`);
         }
 
 
         if(interaction.customId === "ticket_assumir"){
-            const tickets = await db.get(`ticket_${interaction.channel.id}`)
-            const usuario = tickets.usuario
-            const user = interaction.guild.members.cache.get(usuario)
-            const motivo = tickets.motivo
-            const codigo = tickets.codigo
-
             const user1 = interaction.guild.members.cache.get(interaction.user.id);
             const roleIdToCheck = ticket.config_principais.cargo_staff;
-        
             const hasRequiredRole = user1.roles.cache.has(roleIdToCheck);
         
             if (!hasRequiredRole) {
               await interaction.reply({ content: 'Você não tem permissão para usar este botão.', ephemeral: true });
               return;
             }
+
+            // CORREÇÃO TIMEOUT: update() imediato para desativar o botão
+            // Antes o bot fazia várias operações de DB e FileSystem antes de responder.
+            await interaction.deferUpdate();
+
+            const tickets = await db.get(`ticket_${interaction.channel.id}`)
+            const usuario = tickets.usuario
+            const user = interaction.guild.members.cache.get(usuario)
+            const motivo = tickets.motivo
+            const codigo = tickets.codigo
 
             await db.set(`ticket_${interaction.channel.id}`, {
                 usuario:usuario,
@@ -781,7 +770,6 @@ module.exports = {
                 embeds.setImage(`${ticket.config_dentro.thumbnail}`);
             }
             
-            // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM de "ticket assumido"
             try {
                 await user.send({
                     embeds:[
@@ -798,11 +786,9 @@ module.exports = {
                         )
                     ]
                 });
-            } catch (e) {
-                console.warn(`⚠ Não foi possível enviar DM para ${user.user.tag}: DMs desativadas.`);
-            }
+            } catch (e) {}
 
-            await interaction.update({
+            await interaction.editReply({
                 embeds:[
                     embeds
                 ],
@@ -835,40 +821,38 @@ module.exports = {
             });
 
             const logs = interaction.guild.channels.cache.get(ticket.config_principais.channel_logs);
-            if (!logs) return console.log("⚠ Canal de logs não configurado.");
-
-            // BUG 1 CORRIGIDO: Usando o assumedData já carregado em memória
-            // em vez de reler o arquivo do disco com caminho relativo.
-            const quantidadeAssumido = assumedData[staffUserId];
-
-            await logs.send({
-                content:`Um Ticket foi assumido`,
-                embeds:[
-                    new Discord.EmbedBuilder()
-                    .addFields(
-                        {
-                            name:`Usuario`,
-                            value:`${interaction.user}`,
-                            inline:true
-                        },
-                        {
-                            name:`Canal`,
-                            value:`${interaction.channel.url}`,
-                            inline:true
-                        },
-                        {
-                            name:`Tickets assumidos`,
-                            value:`${quantidadeAssumido}`,
-                            inline:true
-                        }
-                    )
-                ]
-            });
+            if (logs) {
+                const quantidadeAssumido = assumedData[staffUserId];
+                await logs.send({
+                    content:`Um Ticket foi assumido`,
+                    embeds:[
+                        new Discord.EmbedBuilder()
+                        .addFields(
+                            {
+                                name:`Usuario`,
+                                value:`${interaction.user}`,
+                                inline:true
+                            },
+                            {
+                                name:`Canal`,
+                                value:`${interaction.channel.url}`,
+                                inline:true
+                            },
+                            {
+                                name:`Tickets assumidos`,
+                                value:`${quantidadeAssumido}`,
+                                inline:true
+                            }
+                        )
+                    ]
+                }).catch(() => {});
+            }
         }
 
 
         if( interaction.customId === "painel_member"){
-            interaction.reply({
+            // Resposta efêmera simples é rápida o suficiente
+            await interaction.reply({
                 content:`${interaction.user}`,
                 embeds:[
                     new Discord.EmbedBuilder()
@@ -907,24 +891,20 @@ module.exports = {
             const options = interaction.values[0]
 
             if(options === "Cham_Staff"){
+                await interaction.deferReply({ ephemeral: true });
+
                 const tickets = await db.get(`ticket_${interaction.channel.id}`)
                 const usuario = tickets.usuario
                 const user = interaction.guild.members.cache.get(usuario)
-                const motivo = tickets.motivo
-                const codigo = tickets.codigo
                 const staff = interaction.guild.members.cache.get(tickets.staff)
 
-                // BUG 7 CORRIGIDO: Verificação de permissão não retornava após responder
-                // O código continuava executando e tentava dar reply duas vezes.
                 if(interaction.user.id !== user.id) {
-                    return interaction.reply({
-                        content:`Só o usuario: ${user}, pode usar esta função`,
-                        ephemeral: true
+                    return interaction.editReply({
+                        content:`Só o usuario: ${user}, pode usar esta função`
                     });
                 }
 
                 if(staff){
-                    // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM para staff
                     try {
                         await staff.send({
                             content:`O Usuario: ${interaction.user}, está lhe esperando no ticket: ${interaction.channel.url}`,
@@ -938,31 +918,30 @@ module.exports = {
                                 )
                             ]
                         });
-                    } catch (e) {
-                        console.warn(`⚠ Não foi possível enviar DM para o staff: DMs desativadas.`);
-                    }
+                    } catch (e) {}
 
-                    interaction.reply({
-                        content:`Enviado com sucesso`,
-                        ephemeral:true
+                    await interaction.editReply({
+                        content:`Enviado com sucesso`
                     })
                 } else {
-                    interaction.reply({
-                        content:`Ninguem assumiu seu ticket ainda!`,
-                        ephemeral:true
+                    await interaction.editReply({
+                        content:`Ninguem assumiu seu ticket ainda!`
                     })
                 }
             }
 
             if (options === "call_create") {
-                const channel_find = await interaction.guild.channels.cache.find(
+                // CORREÇÃO TIMEOUT: update() imediato
+                await interaction.deferUpdate();
+
+                const channel_find = interaction.guild.channels.cache.find(
                   (c) =>
                     c.name ===
                     `📞-${interaction.user.username.toLowerCase().replace(/ /g, "-")}`
                 );
         
                 if (channel_find)
-                  return interaction.update({
+                  return interaction.editReply({
                     embeds: [
                       new Discord.EmbedBuilder().setDescription(
                         ` Você já possui uma call aberta em ${channel_find}`
@@ -976,7 +955,6 @@ module.exports = {
                           .setURL(channel_find.url)
                       ),
                     ],
-                    ephemeral: true,
                   });
         
                 const permissionOverwrites = [
@@ -1003,7 +981,7 @@ module.exports = {
                   permissionOverwrites: permissionOverwrites,
                 });
         
-                interaction.update({
+                await interaction.editReply({
                   embeds: [
                     new Discord.EmbedBuilder().setDescription(
                       `Call criada com sucesso em ${channel}`
@@ -1017,40 +995,37 @@ module.exports = {
                         .setURL(channel.url)
                     ),
                   ],
-                  ephemeral: true,
                 });
             }
 
             if (options === "del_call") {
-                const channel_find = await interaction.guild.channels.cache.find(
+                await interaction.deferUpdate();
+
+                const channel_find = interaction.guild.channels.cache.find(
                   (c) =>
                     c.name ===
                     `📞-${interaction.user.username.toLowerCase().replace(/ /g, "-")}`
                 );
         
                 if (!channel_find)
-                  return interaction.update({
+                  return interaction.editReply({
                     embeds: [
                       new Discord.EmbedBuilder().setDescription(
-                        // BUG 8 CORRIGIDO: Texto confuso "Você não nenhuma possui"
-                        // corrigido para "Você não possui nenhuma call aberta!"
                         `Você não possui nenhuma call aberta!`
                       ),
                     ],
                     components: [],
-                    ephemeral: true,
                   });
         
-                await channel_find.delete();
+                await channel_find.delete().catch(() => {});
         
-                interaction.update({
+                await interaction.editReply({
                   embeds: [
                     new Discord.EmbedBuilder().setDescription(
                       `Call deletada com sucesso!`
                     ),
                   ],
                   components: [],
-                  ephemeral: true,
                 });
             }
         }
@@ -1060,14 +1035,31 @@ module.exports = {
             const tickets = await db.get(`ticket_${interaction.channel.id}`)
             const user = tickets.usuario
             if(user !== interaction.user.id){
-                interaction.reply({
+                return interaction.reply({
                     content:`Só quem pode sair é o usuario <@${user}>`,
                     ephemeral:true
                 })
-                return;
             }
 
-            interaction.channel.edit({
+            // CORREÇÃO TIMEOUT: Responder antes de editar o canal
+            await interaction.reply({
+                content:`<@&${ticket.config_principais.cargo_staff}>`,
+                embeds:[
+                    new Discord.EmbedBuilder()
+                    .setDescription("O Dono do ticket saiu, clique no botão abaixo para finalizar o ticket")
+                ],
+                components:[
+                    new Discord.ActionRowBuilder()
+                    .addComponents(
+                        new Discord.ButtonBuilder()
+                        .setCustomId("finalization_ticket")
+                        .setLabel("Finalizar Ticket")
+                        .setStyle(Discord.ButtonStyle.Danger),
+                    )
+                ]
+            });
+
+            await interaction.channel.edit({
                 name:`closed-${interaction.user.username}`,
                 permissionOverwrites: [
                     {
@@ -1092,24 +1084,7 @@ module.exports = {
                     ],
                   },
                 ],
-              });
-
-            interaction.reply({
-                content:`<@&${ticket.config_principais.cargo_staff}>`,
-                embeds:[
-                    new Discord.EmbedBuilder()
-                    .setDescription("O Dono do ticket saiu, clique no botão abaixo para finalizar o ticket")
-                ],
-                components:[
-                    new Discord.ActionRowBuilder()
-                    .addComponents(
-                        new Discord.ButtonBuilder()
-                        .setCustomId("finalization_ticket")
-                        .setLabel("Finalizar Ticket")
-                        .setStyle(Discord.ButtonStyle.Danger),
-                    )
-                ]
-            })
+              }).catch(() => {});
         }
 
     }}

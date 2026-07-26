@@ -5,8 +5,6 @@ const { ButtonBuilder, EmbedBuilder, StringSelectMenuBuilder, ButtonStyle, Modal
 const fs = require("fs")
 const path = require("path")
 // BUG 1 CORRIGIDO: Caminho absoluto para config.ticket.json
-// Antes usava 'json/config.ticket.json' (relativo ao cwd do processo),
-// o que quebrava quando o bot era iniciado fora da pasta ARQUIVOS DO BOT.
 const configTicketPath = path.join(__dirname, "..", "json", "config.ticket.json")
 
 module.exports = {
@@ -18,8 +16,10 @@ module.exports = {
             const canal_logs = interaction.guild.channels.cache.get(ticket.config_principais.channel_logs)
             const canal_avaliação = interaction.guild.channels.cache.get(ticket.config_principais.channel_avaliation)
             const categoria_ticket = interaction.guild.channels.cache.get(ticket.config_principais.category_ticket)
+            
+            // CORREÇÃO TIMEOUT: update() imediato
             if(options === "principal_selectmeu"){
-                interaction.update({
+                await interaction.update({
                     embeds:[
                         new EmbedBuilder()
                         .setTitle("Altere as principais configurações!")
@@ -63,7 +63,7 @@ module.exports = {
                 })
             }
             if(options === "ticket_selectmenu"){
-                interaction.update({
+                await interaction.update({
                     embeds:[
                         new EmbedBuilder()
                         .setTitle("Altere algumas coisas extras no ticket")
@@ -135,18 +135,21 @@ module.exports = {
             }
 
             if( options === "resetar"){
+                // CORREÇÃO TIMEOUT: deferUpdate() antes de salvar arquivo
+                await interaction.deferUpdate();
+                
                 ticket.config_dentro.texto = "👥 **| Usuario:** {user} \n\n💻 **| Motivo do Ticket:** {motivo}  \n\n 🔐** | Codigo Ticket: {codigo} ** \n\n🔰 **| Informações:** __*Seja Bem Vindo para seu Ticket! Espere até que um **STAFF** lhe atenda, Evite de Marcar varias vezes para evitar punições!*__ \n\n 🧰 **| Ticket Assumido: **{assumido}"
                 
                 fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
-                interaction.reply({
+                await interaction.followUp({
                     content:"Resetado com sucesso!",
                     ephemeral:true
                 })
             }
 
             if(options === "voltar_select") {
-                interaction.update({
+                await interaction.update({
                     embeds:[
                         new EmbedBuilder()
                         .setTitle("Gerencie o seu ticket!")
@@ -237,7 +240,7 @@ module.exports = {
                 return interaction.showModal(modal)
             }
             if(options === "voltar_select") {
-                interaction.update({
+                await interaction.update({
                     embeds:[
                         new EmbedBuilder()
                         .setTitle("Gerencie o seu ticket!")
@@ -270,16 +273,17 @@ module.exports = {
             const canal = interaction.guild.channels.cache.get(thumb)
 
             if(!canal) {
-                interaction.reply({ content:" este canal não Existe!", ephemeral:true})
-                return;
+                return interaction.reply({ content:" este canal não Existe!", ephemeral:true})
             }
-            ticket.config_principais.channel_avaliation = thumb
 
+            // CORREÇÃO TIMEOUT: deferReply antes de salvar
+            await interaction.deferReply({ ephemeral: true });
+            
+            ticket.config_principais.channel_avaliation = thumb
             fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
-            interaction.reply({
-                content:`Canal de avaliação alterado com sucesso!`,
-                ephemeral:true
+            await interaction.editReply({
+                content:`Canal de avaliação alterado com sucesso!`
             })
         }
 
@@ -290,16 +294,16 @@ module.exports = {
             const canal = interaction.guild.channels.cache.get(thumb)
 
             if(!canal) {
-                interaction.reply({ content:" Esta categoria não Existe!", ephemeral:true})
-                return;
+                return interaction.reply({ content:" Esta categoria não Existe!", ephemeral:true})
             }
-            ticket.config_principais.category_ticket = thumb
 
+            await interaction.deferReply({ ephemeral: true });
+            
+            ticket.config_principais.category_ticket = thumb
             fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
-            interaction.reply({
-                content:`Categoria ticket alterado com sucesso!`,
-                ephemeral:true
+            await interaction.editReply({
+                content:`Categoria ticket alterado com sucesso!`
             })
         }
 
@@ -308,16 +312,16 @@ module.exports = {
             const canal = interaction.guild.roles.cache.get(thumb)
 
             if(!canal) {
-                interaction.reply({ content:" Este Cargo não Existe!", ephemeral:true})
-                return;
+                return interaction.reply({ content:" Este Cargo não Existe!", ephemeral:true})
             }
-            ticket.config_principais.cargo_staff = thumb
 
+            await interaction.deferReply({ ephemeral: true });
+            
+            ticket.config_principais.cargo_staff = thumb
             fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
-            interaction.reply({
-                content:`Cargo Staff alterado com sucesso!`,
-                ephemeral:true
+            await interaction.editReply({
+                content:`Cargo Staff alterado com sucesso!`
             })
         }
 
@@ -328,42 +332,42 @@ module.exports = {
             const canal = interaction.guild.channels.cache.get(thumb)
 
             if(!canal) {
-                interaction.reply({ content:" Este canal não Existe!", ephemeral:true})
-                return;
+                return interaction.reply({ content:" Este canal não Existe!", ephemeral:true})
             }
-            ticket.config_principais.channel_logs = thumb
 
+            await interaction.deferReply({ ephemeral: true });
+            
+            ticket.config_principais.channel_logs = thumb
             fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
-            interaction.reply({
-                content:`canal logs alterado com sucesso!`,
-                ephemeral:true
+            await interaction.editReply({
+                content:`canal logs alterado com sucesso!`
             })
         }
 
 
         if(interaction.isModalSubmit() && interaction.customId === "alterar_painel"){
+            await interaction.deferReply({ ephemeral: true });
+            
             const thumb = interaction.fields.getTextInputValue("text_modal");
             ticket.config_dentro.texto = thumb
-
             fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
-            interaction.reply({
-                content:`Painel alterado com sucesso!`,
-                ephemeral:true
+            await interaction.editReply({
+                content:`Painel alterado com sucesso!`
             })
         }
 
 
         if(interaction.isModalSubmit() && interaction.customId === "modal_alterar_thumb"){
+            await interaction.deferReply({ ephemeral: true });
+            
             const thumb = interaction.fields.getTextInputValue("thumbnail_alterar");
             ticket.config_dentro.thumbnail = thumb
-
             fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
-            interaction.reply({
-                content:`Thumbnail alterado com sucesso!`,
-                ephemeral:true
+            await interaction.editReply({
+                content:`Thumbnail alterado com sucesso!`
             })
         }
     }}
