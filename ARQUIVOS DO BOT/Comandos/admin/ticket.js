@@ -1,5 +1,5 @@
 const Discord = require("discord.js")
-const ticket = require("../../json/logs.json")
+// BUG CORRIGIDO: Import incorreto de logs.json removido (não era usado neste arquivo)
 module.exports = {
   name: "ticket", 
   description: "Painel ticket",

@@ -3,6 +3,11 @@ const config = require("../config.json")
 const ticket = require("../json/config.ticket.json")
 const { ButtonBuilder, EmbedBuilder, StringSelectMenuBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder} = require("discord.js")
 const fs = require("fs")
+const path = require("path")
+// BUG 1 CORRIGIDO: Caminho absoluto para config.ticket.json
+// Antes usava 'json/config.ticket.json' (relativo ao cwd do processo),
+// o que quebrava quando o bot era iniciado fora da pasta ARQUIVOS DO BOT.
+const configTicketPath = path.join(__dirname, "..", "json", "config.ticket.json")
 
 module.exports = {
     name: 'gerenciar',
@@ -131,16 +136,14 @@ module.exports = {
 
             if( options === "resetar"){
                 ticket.config_dentro.texto = "👥 **| Usuario:** {user} \n\n💻 **| Motivo do Ticket:** {motivo}  \n\n 🔐** | Codigo Ticket: {codigo} ** \n\n🔰 **| Informações:** __*Seja Bem Vindo para seu Ticket! Espere até que um **STAFF** lhe atenda, Evite de Marcar varias vezes para evitar punições!*__ \n\n 🧰 **| Ticket Assumido: **{assumido}"
+                
+                fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
+
                 interaction.reply({
                     content:"Resetado com sucesso!",
                     ephemeral:true
                 })
-
-                fs.writeFileSync('json/config.ticket.json', JSON.stringify(ticket));
             }
-
-            
-
 
             if(options === "voltar_select") {
                 interaction.update({
@@ -270,9 +273,9 @@ module.exports = {
                 interaction.reply({ content:" este canal não Existe!", ephemeral:true})
                 return;
             }
-            ticket.config_principais.channel_avaliation =  thumb
+            ticket.config_principais.channel_avaliation = thumb
 
-            fs.writeFileSync('json/config.ticket.json', JSON.stringify(ticket));
+            fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
             interaction.reply({
                 content:`Canal de avaliação alterado com sucesso!`,
@@ -290,9 +293,9 @@ module.exports = {
                 interaction.reply({ content:" Esta categoria não Existe!", ephemeral:true})
                 return;
             }
-            ticket.config_principais.category_ticket =  thumb
+            ticket.config_principais.category_ticket = thumb
 
-            fs.writeFileSync('json/config.ticket.json', JSON.stringify(ticket));
+            fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
             interaction.reply({
                 content:`Categoria ticket alterado com sucesso!`,
@@ -308,9 +311,9 @@ module.exports = {
                 interaction.reply({ content:" Este Cargo não Existe!", ephemeral:true})
                 return;
             }
-            ticket.config_principais.cargo_staff =  thumb
+            ticket.config_principais.cargo_staff = thumb
 
-            fs.writeFileSync('json/config.ticket.json', JSON.stringify(ticket));
+            fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
             interaction.reply({
                 content:`Cargo Staff alterado com sucesso!`,
@@ -328,9 +331,9 @@ module.exports = {
                 interaction.reply({ content:" Este canal não Existe!", ephemeral:true})
                 return;
             }
-            ticket.config_principais.channel_logs =  thumb
+            ticket.config_principais.channel_logs = thumb
 
-            fs.writeFileSync('json/config.ticket.json', JSON.stringify(ticket));
+            fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
             interaction.reply({
                 content:`canal logs alterado com sucesso!`,
@@ -339,13 +342,11 @@ module.exports = {
         }
 
 
-
-
         if(interaction.isModalSubmit() && interaction.customId === "alterar_painel"){
             const thumb = interaction.fields.getTextInputValue("text_modal");
-            ticket.config_dentro.texto =  thumb
+            ticket.config_dentro.texto = thumb
 
-            fs.writeFileSync('json/config.ticket.json', JSON.stringify(ticket));
+            fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
             interaction.reply({
                 content:`Painel alterado com sucesso!`,
@@ -356,9 +357,9 @@ module.exports = {
 
         if(interaction.isModalSubmit() && interaction.customId === "modal_alterar_thumb"){
             const thumb = interaction.fields.getTextInputValue("thumbnail_alterar");
-            ticket.config_dentro.thumbnail =  thumb
+            ticket.config_dentro.thumbnail = thumb
 
-            fs.writeFileSync('json/config.ticket.json', JSON.stringify(ticket));
+            fs.writeFileSync(configTicketPath, JSON.stringify(ticket));
 
             interaction.reply({
                 content:`Thumbnail alterado com sucesso!`,

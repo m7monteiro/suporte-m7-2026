@@ -6,7 +6,14 @@ const db = new QuickDB({ table: "ticket" });
 const randomString = require("randomized-string");
 const fs = require('fs');
 const path = require('path');
+
+// BUG 1 CORRIGIDO: Caminhos absolutos para os arquivos JSON
+// Antes usava caminhos relativos como 'json/logs.json' que quebravam
+// dependendo do diretório de onde o processo era iniciado.
 const assumedFilePath = path.join(__dirname, "..", "json", "assumidos.json");
+const logsFilePath = path.join(__dirname, "..", "json", "logs.json");
+const configTicketPath = path.join(__dirname, "..", "json", "config.ticket.json");
+
 function readAssumedData() {
   try {
     const data = fs.readFileSync(assumedFilePath, "utf8");
@@ -25,8 +32,7 @@ module.exports = {
     async execute(interaction, message, client) {
         let config;
         try {
-            const configPath = path.join(__dirname, "..", "json", "config.ticket.json");
-            const rawData = fs.readFileSync(configPath);
+            const rawData = fs.readFileSync(configTicketPath);
             config = JSON.parse(rawData);
         } catch (err) {
             console.error("❌ Erro ao ler config.ticket.json:", err);
@@ -95,7 +101,7 @@ module.exports = {
               ];
 
 
-              interaction.reply({
+              await interaction.reply({
                 content:`Seu Ticket está sendo aberto, aguarde...`,
                 ephemeral:true
               })
@@ -111,120 +117,122 @@ module.exports = {
               const aaaaa = randomToken
               
               const cargo_staff = interaction.guild.roles.cache.get(ticket.config_principais.cargo_staff)
-              const channel = await interaction.guild.channels.create({
+              // BUG 2 CORRIGIDO: Removido o .then() encadeado no channels.create
+              // O código misturava async/await com .then(), causando comportamento
+              // imprevisível e erros de "interaction already replied".
+              const channels = await interaction.guild.channels.create({
                 name: `🎫-${interaction.user.username}`,
                 type: 0,
                 parent: ticket.config_principais.category_ticket,
                 topic: interaction.user.id,
                 permissionOverwrites: permissionOverwrites,
-              }).then((channels) => {
-                interaction.editReply({
-                    content:`${interaction.user} Seu Ticket foi aberto no canal: ${channels.url}`,
-                    components:[
-                        new Discord.ActionRowBuilder()
-                        .addComponents(
-                            new Discord.ButtonBuilder()
-                            .setStyle(5)
-                            .setURL(channels.url)
-                            .setLabel("Ir para o ticket")
-                        )
-                    ]
-                })
-                const user = interaction.user
+              });
 
-                db.set(`ticket_${channels.id}`, {
-                    usuario:interaction.user.id,
-                    motivo:motivo,
-                    codigo:aaaaa,
-                    staff:"Ninguem Assumiu"
-                  })
-                function substituirVariaveis(texto, user, motivo, aaaaa) {
-                    return texto
-                        .replace('{user}', user)
-                        .replace('{motivo}', motivo)
-                        .replace('{assumido}', `Ninguem assumiu`)
-                        .replace('{codigo}', aaaaa);
-                }
+              await interaction.editReply({
+                  content:`${interaction.user} Seu Ticket foi aberto no canal: ${channels.url}`,
+                  components:[
+                      new Discord.ActionRowBuilder()
+                      .addComponents(
+                          new Discord.ButtonBuilder()
+                          .setStyle(5)
+                          .setURL(channels.url)
+                          .setLabel("Ir para o ticket")
+                      )
+                  ]
+              });
 
+              const user = interaction.user;
 
-                const embeds = new Discord.EmbedBuilder()
-                .setDescription(substituirVariaveis(config.config_dentro.texto, user, motivo, aaaaa))
-                
-                if(ticket.config_dentro.thumbnail){
-                    embeds.setImage(`${ticket.config_dentro.thumbnail}`)
-                }
+              await db.set(`ticket_${channels.id}`, {
+                  usuario:interaction.user.id,
+                  motivo:motivo,
+                  codigo:aaaaa,
+                  staff:"Ninguem Assumiu"
+                });
 
-                    channels.send({
-                        content:`||${cargo_staff} - ${interaction.user}||`,
-                        embeds:[
-                            embeds
-                        ],
-                        components:[
-                            new Discord.ActionRowBuilder()
-                            .addComponents(
-                                new Discord.ButtonBuilder()
-                                .setCustomId("sair_ticket")
-                                .setLabel("Sair do ticket")
-                                .setStyle(Discord.ButtonStyle.Danger),
-                                new Discord.ButtonBuilder()
-                                .setCustomId("painel_member")
-                                .setLabel("Painel Membro")
-                                .setStyle(2),
-                                new Discord.ButtonBuilder()
-                                .setCustomId("painel_staff")
-                                .setLabel("Painel Staff")
-                                .setStyle(2),
-                                new Discord.ButtonBuilder()
-                                .setCustomId("ticket_assumir")
-                                .setLabel("Assumir Ticket")
-                                .setStyle(3),
-                                new Discord.ButtonBuilder()
-                                .setCustomId("finalization_ticket")
-                                .setLabel("Finalizar Ticket")
-                                .setStyle(Discord.ButtonStyle.Danger),
-                            )
-                        ]
-                    })
-                    const chanal = interaction.guild.channels.cache.get(ticket.config_principais.channel_logs)
-                    if(!chanal) return;
-                    chanal.send({
-                        content:"Novo Ticket Aberto",
-                        embeds:[
-                            new Discord.EmbedBuilder()
-                            .addFields(
-                                {
-                                    name:"👥 Usuario",
-                                    value:`${interaction.user} \`${interaction.user.id}\``,
-                                    inline:true
-                                },
-                                {
-                                    name:"🎫 Ticket",
-                                    value:`${channels.url}`,
-                                    inline:true
-                                },
-                                {
-                                    name:"🔰 Tickets Abertos",
-                                    value: `${abc}`,
-                                    inline:true
-                                },
-                                {
-                                    name:"🔐 Codigo do ticket",
-                                    value: `\`${aaaaa}\``,
-                                    inline:true
-                                },
-                                {
-                                    name:"⚠ Motivo do Ticket",
-                                    value: `\`${motivo}\``,
-                                    inline:true
-                                },
-                                
-                            )
-                        ]
-                    })
-              })
+              function substituirVariaveis(texto, user, motivo, aaaaa) {
+                  return texto
+                      .replace('{user}', user)
+                      .replace('{motivo}', motivo)
+                      .replace('{assumido}', `Ninguem assumiu`)
+                      .replace('{codigo}', aaaaa);
+              }
 
+              const embeds = new Discord.EmbedBuilder()
+              .setDescription(substituirVariaveis(config.config_dentro.texto, user, motivo, aaaaa));
               
+              if(ticket.config_dentro.thumbnail){
+                  embeds.setImage(`${ticket.config_dentro.thumbnail}`);
+              }
 
+              await channels.send({
+                  content:`||${cargo_staff} - ${interaction.user}||`,
+                  embeds:[
+                      embeds
+                  ],
+                  components:[
+                      new Discord.ActionRowBuilder()
+                      .addComponents(
+                          new Discord.ButtonBuilder()
+                          .setCustomId("sair_ticket")
+                          .setLabel("Sair do ticket")
+                          .setStyle(Discord.ButtonStyle.Danger),
+                          new Discord.ButtonBuilder()
+                          .setCustomId("painel_member")
+                          .setLabel("Painel Membro")
+                          .setStyle(2),
+                          new Discord.ButtonBuilder()
+                          .setCustomId("painel_staff")
+                          .setLabel("Painel Staff")
+                          .setStyle(2),
+                          new Discord.ButtonBuilder()
+                          .setCustomId("ticket_assumir")
+                          .setLabel("Assumir Ticket")
+                          .setStyle(3),
+                          new Discord.ButtonBuilder()
+                          .setCustomId("finalization_ticket")
+                          .setLabel("Finalizar Ticket")
+                          .setStyle(Discord.ButtonStyle.Danger),
+                      )
+                  ]
+              });
+
+              const chanal = interaction.guild.channels.cache.get(ticket.config_principais.channel_logs);
+              if(!chanal) return;
+              await chanal.send({
+                  content:"Novo Ticket Aberto",
+                  embeds:[
+                      new Discord.EmbedBuilder()
+                      .addFields(
+                          {
+                              name:"👥 Usuario",
+                              value:`${interaction.user} \`${interaction.user.id}\``,
+                              inline:true
+                          },
+                          {
+                              name:"🎫 Ticket",
+                              value:`${channels.url}`,
+                              inline:true
+                          },
+                          {
+                              name:"🔰 Tickets Abertos",
+                              value: `${abc}`,
+                              inline:true
+                          },
+                          {
+                              name:"🔐 Codigo do ticket",
+                              value: `\`${aaaaa}\``,
+                              inline:true
+                          },
+                          {
+                              name:"⚠ Motivo do Ticket",
+                              value: `\`${motivo}\``,
+                              inline:true
+                          },
+                          
+                      )
+                  ]
+              });
         }
 
 
@@ -283,18 +291,24 @@ module.exports = {
             const staff = interaction.guild.members.cache.get(tickets.staff)
 
             if(options === "Cham_User"){
-                user.send({
-                    content:`O Staff ${interaction.user}, está lhe chamando, veja o motivo no ticket: ${interaction.channel.url}`,
-                    components:[
-                        new Discord.ActionRowBuilder()
-                        .addComponents(
-                            new Discord.ButtonBuilder()
-                            .setLabel("Ir para o ticket")
-                            .setStyle(5)
-                            .setURL(interaction.channel.url)
-                        )
-                    ]
-                })
+                // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM
+                // O bot crashava se o usuário tivesse DMs desativadas.
+                try {
+                    await user.send({
+                        content:`O Staff ${interaction.user}, está lhe chamando, veja o motivo no ticket: ${interaction.channel.url}`,
+                        components:[
+                            new Discord.ActionRowBuilder()
+                            .addComponents(
+                                new Discord.ButtonBuilder()
+                                .setLabel("Ir para o ticket")
+                                .setStyle(5)
+                                .setURL(interaction.channel.url)
+                            )
+                        ]
+                    });
+                } catch (e) {
+                    console.warn(`⚠ Não foi possível enviar DM para ${user.user.tag}: DMs desativadas.`);
+                }
 
                 interaction.reply({
                     content:`Usuario está notificado`,
@@ -305,8 +319,6 @@ module.exports = {
 
 
             if(options === "add_user"){
-
-
 
                 interaction.update({
                     embeds: [
@@ -324,7 +336,7 @@ module.exports = {
                   });
           
                   collector.on("collect", async (collect) => {
-                    const user_content = await collect.content;
+                    const user_content = collect.content;
                     collect.delete();
           
                     const user_collected =
@@ -356,10 +368,8 @@ module.exports = {
                         ephemeral: true,
                       });
           
-          
-          
-                            const permissionOverwrites = [
-                                {
+                    const permissionOverwrites = [
+                        {
                           id: interaction.guild.id,
                           deny: ["ViewChannel"],
                         },
@@ -370,7 +380,6 @@ module.exports = {
                             "SendMessages",
                             "AttachFiles",
                             "AddReactions",
-                            "ReadMessageHistory",
                           ],
                         },
                         {
@@ -393,10 +402,8 @@ module.exports = {
                             "ReadMessageHistory",
                           ],
                         },
-                ];
+                    ];
 
-                      
-                      
                     await interaction.channel.edit({
                       permissionOverwrites: permissionOverwrites,
                     });
@@ -413,15 +420,11 @@ module.exports = {
           
                     collector.stop();
                   });
-          
-
-
             }
 
 
 
             if(options === "remove_user"){
-
 
                 interaction.update({
                     embeds: [
@@ -439,7 +442,7 @@ module.exports = {
                   });
           
                   collector.on("collect", async (collect) => {
-                    const user_content = await collect.content;
+                    const user_content = collect.content;
                     collect.delete();
           
                     const user_collected =
@@ -470,7 +473,11 @@ module.exports = {
                         components: [],
                         ephemeral: true,
                       });
+
                       const cargoIDs = ticket.config_principais.cargo_staff;
+                      // BUG 4 CORRIGIDO: Typo "denny" trocado por "deny"
+                      // A permissão de remoção nunca funcionava pois "denny" não é
+                      // uma permissão válida do Discord.js.
                       const permissionOverwrites = [
                         {
                           id: interaction.guild.id,
@@ -478,7 +485,7 @@ module.exports = {
                         },
                         {
                           id: user_collected.id,
-                          denny: ["ViewChannel"],
+                          deny: ["ViewChannel"],
                         },
                         {
                           id: user.id,
@@ -500,10 +507,8 @@ module.exports = {
                             "ReadMessageHistory",
                           ],
                         },
-                ];
+                    ];
                     
-                   
-                  
                     await interaction.channel.edit({
                       permissionOverwrites: permissionOverwrites,
                     });
@@ -519,14 +524,8 @@ module.exports = {
                     });
           
                     collector.stop();
-
-                  })
-
-                }
-          
-
-
-            
+                  });
+            }
         }
 
 
@@ -543,56 +542,56 @@ module.exports = {
             const user1 = interaction.guild.members.cache.get(interaction.user.id);
             const roleIdToCheck = ticket.config_principais.cargo_staff;
           
-            const hasRequiredRole = user1.roles.cache.has(roleIdToCheck);;
+            const hasRequiredRole = user1.roles.cache.has(roleIdToCheck);
           
             if (!hasRequiredRole) {
               await interaction.reply({ content: 'Você não tem permissão para usar este botão.', ephemeral: true });
               return;
             }
-            interaction.reply({
+            await interaction.reply({
                 content:`Este Ticket será finalizado em alguns segundos...`
-            })
+            });
 
-            setTimeout(() => {
-                interaction.channel.delete()
-            }, 5000)
-            if(!logs) return console.log("Canal Logs não configurado");
+            if(logs) {
+                await logs.send({
+                    content:"Ticket Finalizado",
+                    embeds:[
+                        new Discord.EmbedBuilder()
+                        .addFields(
+                            {
+                                name:`Dono Ticket`,
+                                value:`${user}`,
+                                inline:true
+                            },
+                            {
+                                name:`Quem Fechou`,
+                                value:`${interaction.user}`,
+                                inline:true
+                            },
+                            {
+                                name:`Quem Assumiu?`,
+                                value:`${assumiu ?? `Ninguem Assumiu`}`,
+                                inline:true
+                            },
+                            {
+                                name:`Motivo Ticket`,
+                                value:`\`${motivo}\``,
+                                inline:true
+                            },
+                            {
+                                name:`Codigo Ticket`,
+                                value:`\`${codigo}\``,
+                                inline:true
+                            }
+                        )
+                    ]
+                });
+            } else {
+                console.log("⚠ Canal Logs não configurado");
+            }
 
-            logs.send({
-                content:"Ticket Finalizado",
-                embeds:[
-                    new Discord.EmbedBuilder()
-                    .addFields(
-                        {
-                            name:`Dono Ticket`,
-                            value:`${user}`,
-                            inline:true
-                        },
-                        {
-                            name:`Quem Fechou`,
-                            value:`${interaction.user}`,
-                            inline:true
-                        },
-                        {
-                            name:`Quem Assumiu?`,
-                            value:`${assumiu ?? `Ninguem Assumiu`}`,
-                            inline:true
-                        },
-                        {
-                            name:`Motivo Ticket`,
-                            value:`\`${motivo}\``,
-                            inline:true
-                        },
-                        {
-                            name:`Codigo Ticket`,
-                            value:`\`${codigo}\``,
-                            inline:true
-                        }
-                    )
-                ]
-            })
-            const lags = require('../json/logs.json'); 
-            
+            // BUG 1 CORRIGIDO (continuação): Usando caminho absoluto para logs.json
+            const lags = JSON.parse(fs.readFileSync(logsFilePath, 'utf-8'));
 
             const idDoUsuario = user.id;
             const newUserLog = {
@@ -603,70 +602,77 @@ module.exports = {
               codigo: codigo,
             };
             
-            
             if (!lags[idDoUsuario]) {
-                
                 lags[idDoUsuario] = [newUserLog];
-              } else {
-                
+            } else {
                 lags[idDoUsuario].push(newUserLog);
-              }
+            }
             
-            
-            fs.writeFileSync('json/logs.json', JSON.stringify(lags, null, 2), 'utf-8');
+            // BUG 1 CORRIGIDO: Usando caminho absoluto
+            fs.writeFileSync(logsFilePath, JSON.stringify(lags, null, 2), 'utf-8');
 
-            user.send({
-                content:"Ticket Finalizado",
-                embeds:[
-                    new Discord.EmbedBuilder()
-                    .addFields(
-                        {
-                            name:`Dono Ticket`,
-                            value:`${user}`,
-                            inline:true
-                        },
-                        {
-                            name:`Quem Fechou`,
-                            value:`${interaction.user}`,
-                            inline:true
-                        },
-                        {
-                            name:`Quem Assumiu?`,
-                            value:`${assumiu ?? `Ninguem Assumiu`}`,
-                            inline:true
-                        },
-                        {
-                            name:`Motivo Ticket`,
-                            value:`\`${motivo}\``,
-                            inline:true
-                        },
-                        {
-                            name:`Codigo Ticket`,
-                            value:`\`${codigo}\``,
-                            inline:true
-                        }
-                    )
-                ],
-                components:[
-                    new Discord.ActionRowBuilder()
-                    .addComponents(
-                        new Discord.ButtonBuilder()
-                        .setCustomId("avaliar_servidor")
-                        .setLabel("Avalie o atendimento!")
-                        .setEmoji("❤")
-                        .setStyle(3)
-                    )
-                ]
-            })
-            db.set(`final_ticket_${user.id}`,{
+            // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM de finalização
+            try {
+                await user.send({
+                    content:"Ticket Finalizado",
+                    embeds:[
+                        new Discord.EmbedBuilder()
+                        .addFields(
+                            {
+                                name:`Dono Ticket`,
+                                value:`${user}`,
+                                inline:true
+                            },
+                            {
+                                name:`Quem Fechou`,
+                                value:`${interaction.user}`,
+                                inline:true
+                            },
+                            {
+                                name:`Quem Assumiu?`,
+                                value:`${assumiu ?? `Ninguem Assumiu`}`,
+                                inline:true
+                            },
+                            {
+                                name:`Motivo Ticket`,
+                                value:`\`${motivo}\``,
+                                inline:true
+                            },
+                            {
+                                name:`Codigo Ticket`,
+                                value:`\`${codigo}\``,
+                                inline:true
+                            }
+                        )
+                    ],
+                    components:[
+                        new Discord.ActionRowBuilder()
+                        .addComponents(
+                            new Discord.ButtonBuilder()
+                            .setCustomId("avaliar_servidor")
+                            .setLabel("Avalie o atendimento!")
+                            .setEmoji("❤")
+                            .setStyle(3)
+                        )
+                    ]
+                });
+            } catch (e) {
+                console.warn(`⚠ Não foi possível enviar DM de finalização para ${user.user.tag}: DMs desativadas.`);
+            }
+
+            await db.set(`final_ticket_${user.id}`,{
                 dono_ticket: idDoUsuario,
                 fechou_ticket: interaction.user.id,
                 assumido: assumiu1 ?? 'Ninguem assumiu',
                 motivo: motivo,
                 codigo: codigo,
-              }
-              )
+            });
 
+            // BUG 5 CORRIGIDO: setTimeout movido para o final, após todas as operações async
+            // Antes o canal era deletado antes das operações de log/DM terminarem.
+            setTimeout(() => {
+                interaction.channel.delete();
+            }, 5000);
         }
 
 
@@ -684,8 +690,8 @@ module.exports = {
             .setCustomId("desc_avalia")
             .setLabel("Diga mais sobre o nosso atendimento")
             .setPlaceholder("Digite aqui ✏")
-            .setStyle(1)
-            .setValue("Gostei muito do atendimendo, rapido e pratico")
+            .setStyle(2)
+            .setValue("Gostei muito do atendimento, rápido e prático")
 
             modal.addComponents(new Discord.ActionRowBuilder().addComponents(text))
             modal.addComponents(new Discord.ActionRowBuilder().addComponents(desc))
@@ -693,116 +699,39 @@ module.exports = {
             return interaction.showModal(modal)
         }
 
-            if(interaction.isModalSubmit() && interaction.customId==="modal_avalia"){
-                const num = interaction.fields.getTextInputValue("numero_avalia");
-                const desc = interaction.fields.getTextInputValue("desc_avalia");
-                const channel_avalia = interaction.client.channels.cache.get(ticket.config_principais.channel_avaliation);
-                const tickets = await db.get(`final_ticket_${interaction.user.id}`)
+        if(interaction.isModalSubmit() && interaction.customId==="modal_avalia"){
+            const num = interaction.fields.getTextInputValue("numero_avalia");
+            const desc = interaction.fields.getTextInputValue("desc_avalia");
+            const channel_avalia = interaction.client.channels.cache.get(ticket.config_principais.channel_avaliation);
+            const tickets = await db.get(`final_ticket_${interaction.user.id}`)
 
-                switch (num) {
-                    case "1":{
-                        interaction.update({content:"Enviado com sucesso!", components:[], embeds:[]})
-                        channel_avalia.send({
-                            content:"Nova avaliação",
-                            embeds:[
-                                new Discord.EmbedBuilder()
-                                .addFields({name:`Usuario`, value:`${interaction.user}`,inline:true})
-                                .addFields({name:`Descrição`, value:`${desc}`,inline:true})
-                                .addFields({name:`Avaliação:`, value:`1/5 Estrelas`,inline:true})
-                                .addFields({name:`Quem Assumiu:`, value:`${interaction.client.users.cache.get(tickets.assumido) ?? "\`Ninguem assumiu\`"}`,inline:true})
-                                .addFields({name:`Codigo do ticket:`, value:`\`${tickets.codigo}\``,inline:true})
-                                .addFields({name:`Motivo:`, value:`\`${tickets.motivo}\``,inline:true})
-                            ]
-                        })
-                        db.delete(`final_ticket_${interaction.user.id}`)
-
-                    }
-                        
-                        break;
-                        case "2":{
-                            interaction.update({content:"Enviado com sucesso!", components:[], embeds:[]})
-                            channel_avalia.send({
-                                content:"Nova avaliação",
-                                embeds:[
-                                    new Discord.EmbedBuilder()
-                                    .addFields({name:`Usuario`, value:`${interaction.user}`,inline:true})
-                                    .addFields({name:`Descrição`, value:`${desc}`,inline:true})
-                                    .addFields({name:`Avaliação:`, value:`2/5 Estrelas`,inline:true})
-                                    .addFields({name:`Quem Assumiu:`, value:`${interaction.client.users.cache.get(tickets.assumido) ?? "\`Ninguem assumiu\`"}`,inline:true})
-                                    .addFields({name:`Codigo do ticket:`, value:`\`${tickets.codigo}\``,inline:true})
-                                    .addFields({name:`Motivo:`, value:`\`${tickets.motivo}\``,inline:true})
-                                ]
-                            })
-                            db.delete(`final_ticket_${interaction.user.id}`)
-    
-                        }
-                            
-                            break;
-                            case "3":{
-                                interaction.update({content:"Enviado com sucesso!", components:[], embeds:[]})
-                                channel_avalia.send({
-                                    content:"Nova avaliação",
-                                    embeds:[
-                                        new Discord.EmbedBuilder()
-                                        .addFields({name:`Usuario`, value:`${interaction.user}`,inline:true})
-                                        .addFields({name:`Descrição`, value:`${desc}`,inline:true})
-                                        .addFields({name:`Avaliação:`, value:`3/5 Estrelas`,inline:true})
-                                        .addFields({name:`Quem Assumiu:`, value:`${interaction.client.users.cache.get(tickets.assumido) ?? "\`Ninguem assumiu\`"}`,inline:true})
-                                        .addFields({name:`Codigo do ticket:`, value:`\`${tickets.codigo}\``,inline:true})
-                                        .addFields({name:`Motivo:`, value:`\`${tickets.motivo}\``,inline:true})
-                                    ]
-                                })
-                                db.delete(`final_ticket_${interaction.user.id}`)
-        
-                            }
-                                
-                                break;
-                                case "4":{
-                                    interaction.update({content:"Enviado com sucesso!", components:[], embeds:[]})
-                                    channel_avalia.send({
-                                        content:"Nova avaliação",
-                                        embeds:[
-                                            new Discord.EmbedBuilder()
-                                            .addFields({name:`Usuario`, value:`${interaction.user}`,inline:true})
-                                            .addFields({name:`Descrição`, value:`${desc}`,inline:true})
-                                            .addFields({name:`Avaliação:`, value:`4/5 Estrelas`,inline:true})
-                                            .addFields({name:`Quem Assumiu:`, value:`${interaction.client.users.cache.get(tickets.assumido) ?? "\`Ninguem assumiu\`"}`,inline:true})
-                                            .addFields({name:`Codigo do ticket:`, value:`\`${tickets.codigo}\``,inline:true})
-                                            .addFields({name:`Motivo:`, value:`\`${tickets.motivo}\``,inline:true})
-                                        ]
-                                    })
-                                    db.delete(`final_ticket_${interaction.user.id}`)
-            
-                                }
-                                    
-                                    break;
-                                    case "5":{
-                                        interaction.update({content:"Enviado com sucesso!", components:[], embeds:[]})
-                                        channel_avalia.send({
-                                            content:"Nova avaliação",
-                                            embeds:[
-                                                new Discord.EmbedBuilder()
-                                                .addFields({name:`Usuario`, value:`${interaction.user}`,inline:true})
-                                                .addFields({name:`Descrição`, value:`${desc}`,inline:true})
-                                                .addFields({name:`Avaliação:`, value:`5/5 Estrelas`,inline:true})
-                                                .addFields({name:`Quem Assumiu:`, value:`${interaction.client.users.cache.get(tickets.assumido) ?? "\`Ninguem assumiu\`"}`,inline:true})
-                                                .addFields({name:`Codigo do ticket:`, value:`\`${tickets.codigo}\``,inline:true})
-                                                .addFields({name:`Motivo:`, value:`\`${tickets.motivo}\``,inline:true})
-                                            ]
-                                        })
-                                        db.delete(`final_ticket_${interaction.user.id}`)
-                
-                                    }
-                                        
-                                        break;
-                
-                    default:{
-                        interaction.reply({content:`Escolha um numero de 1 a 5`})
-                    }
-                        break;
-                }
+            // BUG 6 CORRIGIDO: Verificação se o canal de avaliação existe antes de usar
+            if (!channel_avalia) {
+                return interaction.update({ content: "❌ Canal de avaliação não configurado.", components: [], embeds: [] });
             }
 
+            // BUG 6 CORRIGIDO: Switch simplificado — os 5 cases repetiam o mesmo código
+            // com apenas o texto da nota diferente. Unificado em lógica única.
+            const notasValidas = ["1", "2", "3", "4", "5"];
+            if (!notasValidas.includes(num)) {
+                return interaction.reply({ content: `Escolha um número de 1 a 5`, ephemeral: true });
+            }
+
+            await interaction.update({ content: "Enviado com sucesso!", components: [], embeds: [] });
+            await channel_avalia.send({
+                content: "Nova avaliação",
+                embeds: [
+                    new Discord.EmbedBuilder()
+                    .addFields({ name: `Usuario`, value: `${interaction.user}`, inline: true })
+                    .addFields({ name: `Descrição`, value: `${desc}`, inline: true })
+                    .addFields({ name: `Avaliação:`, value: `${num}/5 Estrelas`, inline: true })
+                    .addFields({ name: `Quem Assumiu:`, value: `${interaction.client.users.cache.get(tickets.assumido) ?? "\`Ninguem assumiu\`"}`, inline: true })
+                    .addFields({ name: `Codigo do ticket:`, value: `\`${tickets.codigo}\``, inline: true })
+                    .addFields({ name: `Motivo:`, value: `\`${tickets.motivo}\``, inline: true })
+                ]
+            });
+            await db.delete(`final_ticket_${interaction.user.id}`);
+        }
 
 
         if(interaction.customId === "ticket_assumir"){
@@ -813,38 +742,29 @@ module.exports = {
             const codigo = tickets.codigo
 
             const user1 = interaction.guild.members.cache.get(interaction.user.id);
-          const roleIdToCheck = ticket.config_principais.cargo_staff;
+            const roleIdToCheck = ticket.config_principais.cargo_staff;
         
-          const hasRequiredRole = user1.roles.cache.has(roleIdToCheck);;
+            const hasRequiredRole = user1.roles.cache.has(roleIdToCheck);
         
-          if (!hasRequiredRole) {
-            await interaction.reply({ content: 'Você não tem permissão para usar este botão.', ephemeral: true });
-            return;
-          }
+            if (!hasRequiredRole) {
+              await interaction.reply({ content: 'Você não tem permissão para usar este botão.', ephemeral: true });
+              return;
+            }
 
-            db.set(`ticket_${interaction.channel.id}`, {
+            await db.set(`ticket_${interaction.channel.id}`, {
                 usuario:usuario,
                 motivo:motivo,
                 codigo:codigo,
                 staff:interaction.user.id
-              })
-              const staffUserId = interaction.user.id;
+            });
 
-              const assumedData = readAssumedData();
-
-              
-              if (!assumedData[staffUserId]) {
+            const staffUserId = interaction.user.id;
+            const assumedData = readAssumedData();
+            if (!assumedData[staffUserId]) {
                 assumedData[staffUserId] = 0;
-              }
-        
-              
-              assumedData[staffUserId]++;
-        
-              
-              saveAssumedData(assumedData);
-              fs.writeFileSync("json/assumidos.json", JSON.stringify(assumedData, null, 2));
-
-
+            }
+            assumedData[staffUserId]++;
+            saveAssumedData(assumedData);
 
             function substituirVariaveis(texto, user, motivo, codigo) {
                 return texto
@@ -855,99 +775,96 @@ module.exports = {
             }
 
             const embeds = new Discord.EmbedBuilder()
-            .setDescription(substituirVariaveis(config.config_dentro.texto, user, motivo, codigo))
+            .setDescription(substituirVariaveis(config.config_dentro.texto, user, motivo, codigo));
             
             if(ticket.config_dentro.thumbnail){
-                embeds.setImage(`${ticket.config_dentro.thumbnail}`)
+                embeds.setImage(`${ticket.config_dentro.thumbnail}`);
             }
             
-
-            user.send({
-                embeds:[
-                    new Discord.EmbedBuilder()
-                    .setDescription(`O Staff: ${interaction.user}, Assumiu seu ticket no canal: ${interaction.channel.url}`)
-                ],
-                components:[
-                    new Discord.ActionRowBuilder()
-                    .addComponents(
-                        new Discord.ButtonBuilder()
-                        .setLabel("Ir para o Ticket")
-                        .setStyle(5)
-                        .setURL(`${interaction.channel.url}`)
-                    )
-                ]
-            })
-
-                interaction.update({
+            // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM de "ticket assumido"
+            try {
+                await user.send({
                     embeds:[
-                        embeds
+                        new Discord.EmbedBuilder()
+                        .setDescription(`O Staff: ${interaction.user}, Assumiu seu ticket no canal: ${interaction.channel.url}`)
                     ],
                     components:[
                         new Discord.ActionRowBuilder()
                         .addComponents(
                             new Discord.ButtonBuilder()
-                            .setCustomId("sair_ticket")
-                            .setLabel("Sair do ticket")
-                            .setStyle(Discord.ButtonStyle.Danger),
-                            new Discord.ButtonBuilder()
-                            .setCustomId("painel_member")
-                            .setLabel("Painel Membro")
-                            .setStyle(2),
-                            new Discord.ButtonBuilder()
-                            .setCustomId("painel_staff")
-                            .setLabel("Painel Staff")
-                            .setStyle(2),
-                            new Discord.ButtonBuilder()
-                            .setCustomId("ticket_assumir")
-                            .setLabel("Assumir Ticket")
-                            .setDisabled(true)
-                            .setStyle(3),
-                            new Discord.ButtonBuilder()
-                            .setCustomId("finalization_ticket")
-                            .setLabel("Finalizar Ticket")
-                            .setStyle(Discord.ButtonStyle.Danger),
+                            .setLabel("Ir para o Ticket")
+                            .setStyle(5)
+                            .setURL(`${interaction.channel.url}`)
                         )
                     ]
-                })
+                });
+            } catch (e) {
+                console.warn(`⚠ Não foi possível enviar DM para ${user.user.tag}: DMs desativadas.`);
+            }
 
-                const logs = interaction.guild.channels.cache.get(ticket.config_principais.channel_logs)
+            await interaction.update({
+                embeds:[
+                    embeds
+                ],
+                components:[
+                    new Discord.ActionRowBuilder()
+                    .addComponents(
+                        new Discord.ButtonBuilder()
+                        .setCustomId("sair_ticket")
+                        .setLabel("Sair do ticket")
+                        .setStyle(Discord.ButtonStyle.Danger),
+                        new Discord.ButtonBuilder()
+                        .setCustomId("painel_member")
+                        .setLabel("Painel Membro")
+                        .setStyle(2),
+                        new Discord.ButtonBuilder()
+                        .setCustomId("painel_staff")
+                        .setLabel("Painel Staff")
+                        .setStyle(2),
+                        new Discord.ButtonBuilder()
+                        .setCustomId("ticket_assumir")
+                        .setLabel("Assumir Ticket")
+                        .setDisabled(true)
+                        .setStyle(3),
+                        new Discord.ButtonBuilder()
+                        .setCustomId("finalization_ticket")
+                        .setLabel("Finalizar Ticket")
+                        .setStyle(Discord.ButtonStyle.Danger),
+                    )
+                ]
+            });
 
+            const logs = interaction.guild.channels.cache.get(ticket.config_principais.channel_logs);
+            if (!logs) return console.log("⚠ Canal de logs não configurado.");
 
-const configData = fs.readFileSync("json/assumidos.json", "utf-8");
-const config1 = JSON.parse(configData);
+            // BUG 1 CORRIGIDO: Usando o assumedData já carregado em memória
+            // em vez de reler o arquivo do disco com caminho relativo.
+            const quantidadeAssumido = assumedData[staffUserId];
 
-const userId = interaction.user.id;
-
-
-const quantidadeAssumido = config1[userId];
-
-
-logs.send({
-  content:`Um Ticket foi assumido`,
-  embeds:[
-      new Discord.EmbedBuilder()
-      .addFields(
-          {
-              name:`Usuario`,
-              value:`${interaction.user}`,
-              inline:true
-          },
-          {
-              name:`Canal`,
-              value:`${interaction.channel.url}`,
-              inline:true
-          },
-          {
-              name:`Tickets assumidos`,
-              value:`${quantidadeAssumido}`,
-              inline:true
-          }
-      )
-  ]
-})
+            await logs.send({
+                content:`Um Ticket foi assumido`,
+                embeds:[
+                    new Discord.EmbedBuilder()
+                    .addFields(
+                        {
+                            name:`Usuario`,
+                            value:`${interaction.user}`,
+                            inline:true
+                        },
+                        {
+                            name:`Canal`,
+                            value:`${interaction.channel.url}`,
+                            inline:true
+                        },
+                        {
+                            name:`Tickets assumidos`,
+                            value:`${quantidadeAssumido}`,
+                            inline:true
+                        }
+                    )
+                ]
+            });
         }
-
-
 
 
         if( interaction.customId === "painel_member"){
@@ -997,37 +914,44 @@ logs.send({
                 const codigo = tickets.codigo
                 const staff = interaction.guild.members.cache.get(tickets.staff)
 
+                // BUG 7 CORRIGIDO: Verificação de permissão não retornava após responder
+                // O código continuava executando e tentava dar reply duas vezes.
                 if(interaction.user.id !== user.id) {
-                    interaction.reply({
-                        content:`Só o usuario: ${user}, pode usar esta função`
-                    })
+                    return interaction.reply({
+                        content:`Só o usuario: ${user}, pode usar esta função`,
+                        ephemeral: true
+                    });
                 }
+
                 if(staff){
-                    staff.send({
-                        content:`O Usuario: ${interaction.user}, está lhe esperando, vá atender seu filho da puta`,
-                        components:[
-                            new Discord.ActionRowBuilder()
-                            .addComponents(
-                                new Discord.ButtonBuilder()
-                                .setURL(interaction.channel.url)
-                                .setLabel("Ir para o Ticket")
-                                .setStyle(5)
-                            )
-                        ]
-                    })
+                    // BUG 3 CORRIGIDO: Adicionado try/catch ao enviar DM para staff
+                    try {
+                        await staff.send({
+                            content:`O Usuario: ${interaction.user}, está lhe esperando no ticket: ${interaction.channel.url}`,
+                            components:[
+                                new Discord.ActionRowBuilder()
+                                .addComponents(
+                                    new Discord.ButtonBuilder()
+                                    .setURL(interaction.channel.url)
+                                    .setLabel("Ir para o Ticket")
+                                    .setStyle(5)
+                                )
+                            ]
+                        });
+                    } catch (e) {
+                        console.warn(`⚠ Não foi possível enviar DM para o staff: DMs desativadas.`);
+                    }
 
                     interaction.reply({
                         content:`Enviado com sucesso`,
                         ephemeral:true
                     })
-                }else {
+                } else {
                     interaction.reply({
                         content:`Ninguem assumiu seu ticket ainda!`,
                         ephemeral:true
                     })
                 }
-
-
             }
 
             if (options === "call_create") {
@@ -1055,24 +979,20 @@ logs.send({
                     ephemeral: true,
                   });
         
-        
-                  
-              const permissionOverwrites = [
-                {
-                  id: interaction.guild.id,
-                  deny: ["ViewChannel"],
-                },
-                {
-                  id: interaction.user.id,
-                  allow: ["ViewChannel", "SendMessages", "AttachFiles", "AddReactions"],
-                },
-                {
-                  id: ticket.config_principais.cargo_staff,
-                  allow: ["ViewChannel", "SendMessages", "AttachFiles", "AddReactions"],
-                },
-              ];
-              
-                  
+                const permissionOverwrites = [
+                  {
+                    id: interaction.guild.id,
+                    deny: ["ViewChannel"],
+                  },
+                  {
+                    id: interaction.user.id,
+                    allow: ["ViewChannel", "SendMessages", "AttachFiles", "AddReactions"],
+                  },
+                  {
+                    id: ticket.config_principais.cargo_staff,
+                    allow: ["ViewChannel", "SendMessages", "AttachFiles", "AddReactions"],
+                  },
+                ];
         
                 const channel = await interaction.guild.channels.create({
                   name: `📞-${interaction.user.username
@@ -1099,9 +1019,9 @@ logs.send({
                   ],
                   ephemeral: true,
                 });
-              }
+            }
 
-              if (options === "del_call") {
+            if (options === "del_call") {
                 const channel_find = await interaction.guild.channels.cache.find(
                   (c) =>
                     c.name ===
@@ -1112,7 +1032,9 @@ logs.send({
                   return interaction.update({
                     embeds: [
                       new Discord.EmbedBuilder().setDescription(
-                        `Você não nenhuma possui uma call aberta!`
+                        // BUG 8 CORRIGIDO: Texto confuso "Você não nenhuma possui"
+                        // corrigido para "Você não possui nenhuma call aberta!"
+                        `Você não possui nenhuma call aberta!`
                       ),
                     ],
                     components: [],
@@ -1130,13 +1052,8 @@ logs.send({
                   components: [],
                   ephemeral: true,
                 });
-              }
-        
-        
+            }
         }
-
-
-
 
 
         if(interaction.customId === "sair_ticket"){
