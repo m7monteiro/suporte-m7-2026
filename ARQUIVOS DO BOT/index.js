@@ -38,7 +38,13 @@ client.slashCommands = new Discord.Collection()
 
 require('./handler')(client)
 
-client.login(process.env.DISCORD_TOKEN || config.token)
+const token = process.env.DISCORD_TOKEN || config.token;
+if (!token || token === "REPLACE_WITH_ENV_VAR") {
+    console.error("❌ ERRO: Nenhum token do Discord foi fornecido! Configure a variável DISCORD_TOKEN no Render.");
+    process.exit(1);
+}
+console.log("🔑 Tentando login com token...");
+client.login(token);
 
 client.on("interactionCreate", require('./events/config-ticket').execute);
 client.on("interactionCreate", require('./events/ticket').execute);
