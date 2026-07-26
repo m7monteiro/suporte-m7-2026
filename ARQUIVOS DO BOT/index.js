@@ -38,8 +38,15 @@ client.slashCommands = new Discord.Collection()
 
 require('./handler')(client)
 
-client.login(config.token)
+client.login(process.env.DISCORD_TOKEN || config.token)
 
 client.on("interactionCreate", require('./events/config-ticket').execute);
 client.on("interactionCreate", require('./events/ticket').execute);
 client.on("interactionCreate", require('./events/gerenciar').execute);
+
+// Servidor web simples para manter o bot ativo no Render (via UptimeRobot)
+const http = require('http');
+http.createServer(function (req, res) {
+  res.write("Bot is running!");
+  res.end();
+}).listen(process.env.PORT || 8080);
