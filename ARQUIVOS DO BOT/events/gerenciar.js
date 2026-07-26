@@ -10,6 +10,8 @@ const configTicketPath = path.join(__dirname, "..", "json", "config.ticket.json"
 module.exports = {
     name: 'gerenciar',
     async execute(interaction, message, client) {
+        if (!interaction.customId) return;
+
         if(interaction.isStringSelectMenu() && interaction.customId === "gerenciamento_ticket"){
             const options = interaction.values[0]
             const cargo = interaction.guild.roles.cache.get(ticket.config_principais.cargo_staff)

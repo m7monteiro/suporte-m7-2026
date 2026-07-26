@@ -7,6 +7,7 @@ const embed = new Discord.EmbedBuilder()
 module.exports = {
     name: 'config-ticket',
     async execute(interaction, message, client) {
+        if (!interaction.customId) return; // Proteção contra interações sem ID
 
         if(interaction.customId === "add-titule"){
             // CORREÇÃO TIMEOUT: deferUpdate() é imediato

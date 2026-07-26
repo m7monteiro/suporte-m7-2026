@@ -27,6 +27,7 @@ function saveAssumedData(data) {
 module.exports = {
     name: 'ticket',
     async execute(interaction, message, client) {
+        if (!interaction.customId) return;
         let config;
         try {
             const rawData = fs.readFileSync(configTicketPath);
