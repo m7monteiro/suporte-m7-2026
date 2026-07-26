@@ -36,9 +36,12 @@ module.exports = async (client) => {
     });
 
     client.on("ready", async () => {
-        console.log("🚀 Registrando comandos slash...");
-        client.guilds.cache.forEach(guild => {
-            guild.commands.set(SlashsArray).catch(err => console.error(`❌ Erro ao registrar comandos na guild ${guild.id}:`, err));
-        });
+        console.log("🚀 Registrando comandos slash globalmente...");
+        try {
+            await client.application.commands.set(SlashsArray);
+            console.log("✅ Comandos registrados com sucesso!");
+        } catch (err) {
+            console.error("❌ Erro ao registrar comandos globais:", err);
+        }
     });
 };

@@ -5,7 +5,8 @@ const { QuickDB } = require("quick.db");
 const db = new QuickDB({ table: "ticket" });
 const randomString = require("randomized-string");
 const fs = require('fs');
-const assumedFilePath = "json/assumidos.json";
+const path = require('path');
+const assumedFilePath = path.join(__dirname, "..", "json", "assumidos.json");
 function readAssumedData() {
   try {
     const data = fs.readFileSync(assumedFilePath, "utf8");
@@ -22,8 +23,16 @@ function saveAssumedData(data) {
 module.exports = {
     name: 'ticket',
     async execute(interaction, message, client) {
-        const rawData = fs.readFileSync('json/config.ticket.json');
-        const config = JSON.parse(rawData);
+        let config;
+        try {
+            const configPath = path.join(__dirname, "..", "json", "config.ticket.json");
+            const rawData = fs.readFileSync(configPath);
+            config = JSON.parse(rawData);
+        } catch (err) {
+            console.error("❌ Erro ao ler config.ticket.json:", err);
+            return;
+        }
+
 
         if(interaction.customId === "abrir-ticket") {
             const cleanUsername = interaction.user.username
